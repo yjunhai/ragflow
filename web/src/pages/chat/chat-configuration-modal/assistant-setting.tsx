@@ -4,7 +4,7 @@ import classNames from 'classnames';
 import { ISegmentedContentProps } from '../interface';
 
 import KnowledgeBaseItem from '@/components/knowledge-base-item';
-import { useTranslate } from '@/hooks/commonHooks';
+import { useTranslate } from '@/hooks/common-hooks';
 import styles from './index.less';
 
 const AssistantSetting = ({ show }: ISegmentedContentProps) => {
@@ -95,7 +95,7 @@ const AssistantSetting = ({ show }: ISegmentedContentProps) => {
         valuePropName="checked"
         name={['prompt_config', 'self_rag']}
         tooltip={t('selfRagTip')}
-        initialValue={true}
+        initialValue={false}
       >
         <Switch />
       </Form.Item>

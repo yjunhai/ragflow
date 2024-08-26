@@ -1,7 +1,7 @@
 import { BaseState } from '@/interfaces/common';
 import { IKnowledgeFile } from '@/interfaces/database/knowledge';
 import i18n from '@/locales/config';
-import kbService, { getDocumentFile } from '@/services/kbService';
+import kbService, { getDocumentFile } from '@/services/knowledge-service';
 import { message } from 'antd';
 import omit from 'lodash/omit';
 import pick from 'lodash/pick';
@@ -101,7 +101,7 @@ const model: DvaModel<KFModelState> = {
       function* ({ payload }, { call, put }) {
         yield put({ type: 'getKfList', payload: { kb_id: payload } });
       },
-      { type: 'poll', delay: 5000 }, // TODO: Provide type support for this effect
+      { type: 'poll', delay: 15000 }, // TODO: Provide type support for this effect
     ],
     *updateDocumentStatus({ payload = {} }, { call, put }) {
       const { data } = yield call(

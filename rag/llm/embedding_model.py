@@ -31,7 +31,8 @@ import numpy as np
 import asyncio
 from api.utils.file_utils import get_home_cache_dir
 from rag.utils import num_tokens_from_string, truncate
-
+import google.generativeai as genai 
+import json
 
 class Base(ABC):
     def __init__(self, key, model_name):
@@ -99,22 +100,44 @@ class OpenAIEmbed(Base):
         self.model_name = model_name
 
     def encode(self, texts: list, batch_size=32):
-        texts = [truncate(t, 8196) for t in texts]
+        texts = [truncate(t, 8191) for t in texts]
         res = self.client.embeddings.create(input=texts,
                                             model=self.model_name)
         return np.array([d.embedding for d in res.data]
                         ), res.usage.total_tokens
 
     def encode_queries(self, text):
-        res = self.client.embeddings.create(input=[truncate(text, 8196)],
+        res = self.client.embeddings.create(input=[truncate(text, 8191)],
                                             model=self.model_name)
         return np.array(res.data[0].embedding), res.usage.total_tokens
 
 
-class AzureEmbed(Base):
+class LocalAIEmbed(Base):
+    def __init__(self, key, model_name, base_url):
+        if not base_url:
+            raise ValueError("Local embedding model url cannot be None")
+        if base_url.split("/")[-1] != "v1":
+            base_url = os.path.join(base_url, "v1")
+        self.client = OpenAI(api_key="empty", base_url=base_url)
+        self.model_name = model_name.split("___")[0]
+
+    def encode(self, texts: list, batch_size=32):
+        res = self.client.embeddings.create(input=texts, model=self.model_name)
+        return (
+            np.array([d.embedding for d in res.data]),
+            1024,
+        )  # local embedding for LmStudio donot count tokens
+
+    def encode_queries(self, text):
+        embds, cnt = self.encode([text])
+        return np.array(embds[0]), cnt
+
+
+class AzureEmbed(OpenAIEmbed):
     def __init__(self, key, model_name, **kwargs):
         self.client = AzureOpenAI(api_key=key, azure_endpoint=kwargs["base_url"], api_version="2024-02-01")
         self.model_name = model_name
+
 
 class BaiChuanEmbed(OpenAIEmbed):
     def __init__(self, key,
@@ -419,3 +442,184 @@ class BedrockEmbed(Base):
 
         return np.array(embeddings), token_count
 
+class GeminiEmbed(Base):
+    def __init__(self, key, model_name='models/text-embedding-004',
+                 **kwargs):
+        genai.configure(api_key=key)
+        self.model_name = 'models/' + model_name
+        
+    def encode(self, texts: list, batch_size=32):
+        texts = [truncate(t, 2048) for t in texts]
+        token_count = sum(num_tokens_from_string(text) for text in texts)
+        result = genai.embed_content(
+            model=self.model_name,
+            content=texts,
+            task_type="retrieval_document",
+            title="Embedding of list of strings")
+        return np.array(result['embedding']),token_count
+    
+    def encode_queries(self, text):
+        result = genai.embed_content(
+            model=self.model_name,
+            content=truncate(text,2048),
+            task_type="retrieval_document",
+            title="Embedding of single string")
+        token_count = num_tokens_from_string(text)
+        return np.array(result['embedding']),token_count
+
+class NvidiaEmbed(Base):
+    def __init__(
+        self, key, model_name, base_url="https://integrate.api.nvidia.com/v1/embeddings"
+    ):
+        if not base_url:
+            base_url = "https://integrate.api.nvidia.com/v1/embeddings"
+        self.api_key = key
+        self.base_url = base_url
+        self.headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+            "authorization": f"Bearer {self.api_key}",
+        }
+        self.model_name = model_name
+        if model_name == "nvidia/embed-qa-4":
+            self.base_url = "https://ai.api.nvidia.com/v1/retrieval/nvidia/embeddings"
+            self.model_name = "NV-Embed-QA"
+        if model_name == "snowflake/arctic-embed-l":
+            self.base_url = "https://ai.api.nvidia.com/v1/retrieval/snowflake/arctic-embed-l/embeddings"
+
+    def encode(self, texts: list, batch_size=None):
+        payload = {
+            "input": texts,
+            "input_type": "query",
+            "model": self.model_name,
+            "encoding_format": "float",
+            "truncate": "END",
+        }
+        res = requests.post(self.base_url, headers=self.headers, json=payload).json()
+        return (
+            np.array([d["embedding"] for d in res["data"]]),
+            res["usage"]["total_tokens"],
+        )
+
+    def encode_queries(self, text):
+        embds, cnt = self.encode([text])
+        return np.array(embds[0]), cnt
+
+
+class LmStudioEmbed(LocalAIEmbed):
+    def __init__(self, key, model_name, base_url):
+        if not base_url:
+            raise ValueError("Local llm url cannot be None")
+        if base_url.split("/")[-1] != "v1":
+            base_url = os.path.join(base_url, "v1")
+        self.client = OpenAI(api_key="lm-studio", base_url=base_url)
+        self.model_name = model_name
+
+
+class OpenAI_APIEmbed(OpenAIEmbed):
+    def __init__(self, key, model_name, base_url):
+        if not base_url:
+            raise ValueError("url cannot be None")
+        if base_url.split("/")[-1] != "v1":
+            base_url = os.path.join(base_url, "v1")
+        self.client = OpenAI(api_key=key, base_url=base_url)
+        self.model_name = model_name.split("___")[0]
+
+
+class CoHereEmbed(Base):
+    def __init__(self, key, model_name, base_url=None):
+        from cohere import Client
+
+        self.client = Client(api_key=key)
+        self.model_name = model_name
+
+    def encode(self, texts: list, batch_size=32):
+        res = self.client.embed(
+            texts=texts,
+            model=self.model_name,
+            input_type="search_query",
+            embedding_types=["float"],
+        )
+        return np.array([d for d in res.embeddings.float]), int(
+            res.meta.billed_units.input_tokens
+        )
+
+    def encode_queries(self, text):
+        res = self.client.embed(
+            texts=[text],
+            model=self.model_name,
+            input_type="search_query",
+            embedding_types=["float"],
+        )
+        return np.array([d for d in res.embeddings.float]), int(
+            res.meta.billed_units.input_tokens
+        )
+
+
+class TogetherAIEmbed(OllamaEmbed):
+    def __init__(self, key, model_name, base_url="https://api.together.xyz/v1"):
+        if not base_url:
+            base_url = "https://api.together.xyz/v1"
+        super().__init__(key, model_name, base_url)
+
+
+class PerfXCloudEmbed(OpenAIEmbed):
+    def __init__(self, key, model_name, base_url="https://cloud.perfxlab.cn/v1"):
+        if not base_url:
+            base_url = "https://cloud.perfxlab.cn/v1"
+        super().__init__(key, model_name, base_url)
+
+
+class UpstageEmbed(OpenAIEmbed):
+    def __init__(self, key, model_name, base_url="https://api.upstage.ai/v1/solar"):
+        if not base_url:
+            base_url = "https://api.upstage.ai/v1/solar"
+        super().__init__(key, model_name, base_url)
+
+
+class SILICONFLOWEmbed(OpenAIEmbed):
+    def __init__(self, key, model_name, base_url="https://api.siliconflow.cn/v1"):
+        if not base_url:
+            base_url = "https://api.siliconflow.cn/v1"
+        super().__init__(key, model_name, base_url)
+
+
+class ReplicateEmbed(Base):
+    def __init__(self, key, model_name, base_url=None):
+        from replicate.client import Client
+
+        self.model_name = model_name
+        self.client = Client(api_token=key)
+
+    def encode(self, texts: list, batch_size=32):
+        res = self.client.run(self.model_name, input={"texts": json.dumps(texts)})
+        return np.array(res), sum([num_tokens_from_string(text) for text in texts])
+
+    def encode_queries(self, text):
+        res = self.client.embed(self.model_name, input={"texts": [text]})
+        return np.array(res), num_tokens_from_string(text)
+
+
+class BaiduYiyanEmbed(Base):
+    def __init__(self, key, model_name, base_url=None):
+        import qianfan
+
+        key = json.loads(key)
+        ak = key.get("yiyan_ak", "")
+        sk = key.get("yiyan_sk", "")
+        self.client = qianfan.Embedding(ak=ak, sk=sk)
+        self.model_name = model_name
+
+    def encode(self, texts: list, batch_size=32):
+        res = self.client.do(model=self.model_name, texts=texts).body
+        return (
+            np.array([r["embedding"] for r in res["data"]]),
+            res["usage"]["total_tokens"],
+        )
+
+    def encode_queries(self, text):
+        res = self.client.do(model=self.model_name, texts=[text]).body
+        return (
+            np.array([r["embedding"] for r in res["data"]]),
+            res["usage"]["total_tokens"],
+        )

@@ -1,13 +1,11 @@
 import { EditableCell, EditableRow } from '@/components/editable-cell';
-import { useTranslate } from '@/hooks/commonHooks';
+import { useTranslate } from '@/hooks/common-hooks';
 import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Flex, Select, Table, TableProps } from 'antd';
 import { IGenerateParameter } from '../interface';
 
-import {
-  useBuildComponentIdSelectOptions,
-  useHandleOperateParameters,
-} from './hooks';
+import { useBuildComponentIdSelectOptions } from '../hooks';
+import { useHandleOperateParameters } from './hooks';
 import styles from './index.less';
 
 interface IProps {
@@ -38,6 +36,7 @@ const DynamicParameters = ({ nodeId }: IProps) => {
       title: t('key'),
       dataIndex: 'key',
       key: 'key',
+      width: 50,
       onCell: (record: IGenerateParameter) => ({
         record,
         editable: true,
@@ -69,6 +68,7 @@ const DynamicParameters = ({ nodeId }: IProps) => {
       width: 20,
       key: 'operation',
       align: 'center',
+      fixed: 'right',
       render(_, record) {
         return <DeleteOutlined onClick={handleRemove(record.id)} />;
       },
@@ -89,6 +89,7 @@ const DynamicParameters = ({ nodeId }: IProps) => {
         className={styles.variableTable}
         components={components}
         rowClassName={() => styles.editableRow}
+        scroll={{ x: true }}
       />
     </section>
   );

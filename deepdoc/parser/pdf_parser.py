@@ -23,7 +23,7 @@ import logging
 from PIL import Image, ImageDraw
 import numpy as np
 from timeit import default_timer as timer
-from PyPDF2 import PdfReader as pdf2_read
+from pypdf import PdfReader as pdf2_read
 
 from api.utils.file_utils import get_project_base_directory
 from deepdoc.vision import OCR, Recognizer, LayoutRecognizer, TableStructureRecognizer
@@ -285,10 +285,10 @@ class RAGFlowPdfParser:
               "page_number": pagenum} for b, t in bxs if b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]],
             self.mean_height[-1] / 3
         )
-
+        
         # merge chars in the same rect
-        for c in Recognizer.sort_X_firstly(
-                chars, self.mean_width[pagenum - 1] // 4):
+        for c in Recognizer.sort_Y_firstly(
+                chars, self.mean_height[pagenum - 1] // 4):
             ii = Recognizer.find_overlapped(c, bxs)
             if ii is None:
                 self.lefted_chars.append(c)
@@ -952,7 +952,7 @@ class RAGFlowPdfParser:
                 fnm, str) else pdfplumber.open(BytesIO(fnm))
             self.page_images = [p.to_image(resolution=72 * zoomin).annotated for i, p in
                                 enumerate(self.pdf.pages[page_from:page_to])]
-            self.page_chars = [[{**c, 'top': max(0, c['top'] - 10), 'bottom': max(0, c['bottom'] - 10)} for c in page.chars if self._has_color(c)] for page in
+            self.page_chars = [[{**c, 'top': c['top'], 'bottom': c['bottom']} for c in page.dedupe_chars().chars if self._has_color(c)] for page in
                                self.pdf.pages[page_from:page_to]]
             self.total_page = len(self.pdf.pages)
         except Exception as e:
@@ -985,7 +985,6 @@ class RAGFlowPdfParser:
             self.is_english = True
         else:
             self.is_english = False
-        self.is_english = False
 
         st = timer()
         for i, img in enumerate(self.page_images):

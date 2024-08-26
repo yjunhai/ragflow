@@ -1,11 +1,7 @@
 import { ReactComponent as MoreModelIcon } from '@/assets/svg/more-model.svg';
 import SvgIcon from '@/components/svg-icon';
-import { useSetModalState, useTranslate } from '@/hooks/commonHooks';
-import {
-  LlmItem,
-  useFetchLlmFactoryListOnMount,
-  useFetchMyLlmListOnMount,
-} from '@/hooks/llmHooks';
+import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
+import { LlmItem, useSelectLlmList } from '@/hooks/llm-hooks';
 import {
   CloseCircleOutlined,
   SettingOutlined,
@@ -28,38 +24,30 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import SettingTitle from '../components/setting-title';
 import { isLocalLlmFactory } from '../utils';
 import ApiKeyModal from './api-key-modal';
+import BedrockModal from './bedrock-modal';
+import { IconMap } from './constant';
 import {
   useHandleDeleteLlm,
-  useSelectModelProvidersLoading,
   useSubmitApiKey,
+  useSubmitBedrock,
+  useSubmitHunyuan,
   useSubmitOllama,
+  useSubmitSpark,
   useSubmitSystemModelSetting,
   useSubmitVolcEngine,
+  useSubmityiyan,
 } from './hooks';
+import HunyuanModal from './hunyuan-modal';
 import styles from './index.less';
 import OllamaModal from './ollama-modal';
+import SparkModal from './spark-modal';
 import SystemModelSettingModal from './system-model-setting-modal';
-import VolcEngineModal from './volcengine-model';
-
-const IconMap = {
-  'Tongyi-Qianwen': 'tongyi',
-  Moonshot: 'moonshot',
-  OpenAI: 'openai',
-  'ZHIPU-AI': 'zhipu',
-  文心一言: 'wenxin',
-  Ollama: 'ollama',
-  Xinference: 'xinference',
-  DeepSeek: 'deepseek',
-  VolcEngine: 'volc_engine',
-  BaiChuan: 'baichuan',
-  Jina: 'jina',
-  MiniMax: 'minimax',
-  Mistral: 'mistral',
-};
+import VolcEngineModal from './volcengine-modal';
+import YiyanModal from './yiyan-modal';
 
 const LlmIcon = ({ name }: { name: string }) => {
   const icon = IconMap[name as keyof typeof IconMap];
@@ -106,7 +94,11 @@ const ModelCard = ({ item, clickApiKey }: IModelCardProps) => {
           <Col span={12} className={styles.factoryOperationWrapper}>
             <Space size={'middle'}>
               <Button onClick={handleApiKeyClick}>
-                {isLocalLlmFactory(item.name) || item.name === 'VolcEngine'
+                {isLocalLlmFactory(item.name) ||
+                item.name === 'VolcEngine' ||
+                item.name === 'Tencent Hunyuan' ||
+                item.name === 'XunFei Spark' ||
+                item.name === 'BaiduYiyan'
                   ? t('addTheModel')
                   : 'API-Key'}
                 <SettingOutlined />
@@ -145,9 +137,7 @@ const ModelCard = ({ item, clickApiKey }: IModelCardProps) => {
 };
 
 const UserSettingModel = () => {
-  const factoryList = useFetchLlmFactoryListOnMount();
-  const llmList = useFetchMyLlmListOnMount();
-  const loading = useSelectModelProvidersLoading();
+  const { factoryList, myLlmList: llmList, loading } = useSelectLlmList();
   const {
     saveApiKeyLoading,
     initialApiKey,
@@ -180,31 +170,69 @@ const UserSettingModel = () => {
     showVolcAddingModal,
     onVolcAddingOk,
     volcAddingLoading,
-    selectedVolcFactory,
   } = useSubmitVolcEngine();
 
-  const handleApiKeyClick = useCallback(
+  const {
+    HunyuanAddingVisible,
+    hideHunyuanAddingModal,
+    showHunyuanAddingModal,
+    onHunyuanAddingOk,
+    HunyuanAddingLoading,
+  } = useSubmitHunyuan();
+
+  const {
+    SparkAddingVisible,
+    hideSparkAddingModal,
+    showSparkAddingModal,
+    onSparkAddingOk,
+    SparkAddingLoading,
+  } = useSubmitSpark();
+
+  const {
+    yiyanAddingVisible,
+    hideyiyanAddingModal,
+    showyiyanAddingModal,
+    onyiyanAddingOk,
+    yiyanAddingLoading,
+  } = useSubmityiyan();
+
+  const {
+    bedrockAddingLoading,
+    onBedrockAddingOk,
+    bedrockAddingVisible,
+    hideBedrockAddingModal,
+    showBedrockAddingModal,
+  } = useSubmitBedrock();
+
+  const ModalMap = useMemo(
+    () => ({
+      Bedrock: showBedrockAddingModal,
+      VolcEngine: showVolcAddingModal,
+      'Tencent Hunyuan': showHunyuanAddingModal,
+      'XunFei Spark': showSparkAddingModal,
+      BaiduYiyan: showyiyanAddingModal,
+    }),
+    [
+      showBedrockAddingModal,
+      showVolcAddingModal,
+      showHunyuanAddingModal,
+      showSparkAddingModal,
+      showyiyanAddingModal,
+    ],
+  );
+
+  const handleAddModel = useCallback(
     (llmFactory: string) => {
       if (isLocalLlmFactory(llmFactory)) {
         showLlmAddingModal(llmFactory);
-      } else if (llmFactory === 'VolcEngine') {
-        showVolcAddingModal('VolcEngine');
+      } else if (llmFactory in ModalMap) {
+        ModalMap[llmFactory as keyof typeof ModalMap]();
       } else {
         showApiKeyModal({ llm_factory: llmFactory });
       }
     },
-    [showApiKeyModal, showLlmAddingModal, showVolcAddingModal],
+    [showApiKeyModal, showLlmAddingModal, ModalMap],
   );
-
-  const handleAddModel = (llmFactory: string) => () => {
-    if (isLocalLlmFactory(llmFactory)) {
-      showLlmAddingModal(llmFactory);
-    } else if (llmFactory === 'VolcEngine') {
-      showVolcAddingModal('VolcEngine');
-    } else {
-      handleApiKeyClick(llmFactory);
-    }
-  };
 
   const items: CollapseProps['items'] = [
     {
@@ -215,7 +243,7 @@ const UserSettingModel = () => {
           grid={{ gutter: 16, column: 1 }}
           dataSource={llmList}
           renderItem={(item) => (
-            <ModelCard item={item} clickApiKey={handleApiKeyClick}></ModelCard>
+            <ModelCard item={item} clickApiKey={handleAddModel}></ModelCard>
           )}
         />
       ),
@@ -246,7 +274,7 @@ const UserSettingModel = () => {
                   </Flex>
                 </Flex>
                 <Divider></Divider>
-                <Button type="link" onClick={handleAddModel(item.name)}>
+                <Button type="link" onClick={() => handleAddModel(item.name)}>
                   {t('addTheModel')}
                 </Button>
               </Card>
@@ -279,12 +307,14 @@ const UserSettingModel = () => {
         onOk={onApiKeySavingOk}
         llmFactory={llmFactory}
       ></ApiKeyModal>
-      <SystemModelSettingModal
-        visible={systemSettingVisible}
-        onOk={onSystemSettingSavingOk}
-        hideModal={hideSystemSettingModal}
-        loading={saveSystemModelSettingLoading}
-      ></SystemModelSettingModal>
+      {systemSettingVisible && (
+        <SystemModelSettingModal
+          visible={systemSettingVisible}
+          onOk={onSystemSettingSavingOk}
+          hideModal={hideSystemSettingModal}
+          loading={saveSystemModelSettingLoading}
+        ></SystemModelSettingModal>
+      )}
       <OllamaModal
         visible={llmAddingVisible}
         hideModal={hideLlmAddingModal}
@@ -297,8 +327,36 @@ const UserSettingModel = () => {
         hideModal={hideVolcAddingModal}
         onOk={onVolcAddingOk}
         loading={volcAddingLoading}
-        llmFactory={selectedVolcFactory}
+        llmFactory={'VolcEngine'}
       ></VolcEngineModal>
+      <HunyuanModal
+        visible={HunyuanAddingVisible}
+        hideModal={hideHunyuanAddingModal}
+        onOk={onHunyuanAddingOk}
+        loading={HunyuanAddingLoading}
+        llmFactory={'Tencent Hunyuan'}
+      ></HunyuanModal>
+      <SparkModal
+        visible={SparkAddingVisible}
+        hideModal={hideSparkAddingModal}
+        onOk={onSparkAddingOk}
+        loading={SparkAddingLoading}
+        llmFactory={'XunFei Spark'}
+      ></SparkModal>
+      <YiyanModal
+        visible={yiyanAddingVisible}
+        hideModal={hideyiyanAddingModal}
+        onOk={onyiyanAddingOk}
+        loading={yiyanAddingLoading}
+        llmFactory={'BaiduYiyan'}
+      ></YiyanModal>
+      <BedrockModal
+        visible={bedrockAddingVisible}
+        hideModal={hideBedrockAddingModal}
+        onOk={onBedrockAddingOk}
+        loading={bedrockAddingLoading}
+        llmFactory={'Bedrock'}
+      ></BedrockModal>
     </section>
   );
 };

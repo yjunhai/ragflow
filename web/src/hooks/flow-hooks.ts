@@ -70,6 +70,7 @@ export const useFetchFlowList = (): { data: IFlow[]; loading: boolean } => {
   const { data, isFetching: loading } = useQuery({
     queryKey: ['fetchFlowList'],
     initialData: [],
+    gcTime: 0,
     queryFn: async () => {
       const { data } = await flowService.listCanvas();
 
@@ -93,6 +94,10 @@ export const useFetchFlow = (): {
   } = useQuery({
     queryKey: ['flowDetail'],
     initialData: {} as IFlow,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    gcTime: 0,
     queryFn: async () => {
       const { data } = await flowService.getCanvas({}, id);
 
@@ -117,7 +122,7 @@ export const useSetFlow = () => {
       dsl?: DSL;
       avatar?: string;
     }) => {
-      const { data } = await flowService.setCanvas(params);
+      const { data = {} } = await flowService.setCanvas(params);
       if (data.retcode === 0) {
         message.success(
           i18n.t(`message.${params?.id ? 'modified' : 'created'}`),
@@ -185,4 +190,25 @@ export const useResetFlow = () => {
   });
 
   return { data, loading, resetFlow: mutateAsync };
+};
+
+export const useTestDbConnect = () => {
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: ['testDbConnect'],
+    mutationFn: async (params: any) => {
+      const ret = await flowService.testDbConnect(params);
+      if (ret?.data?.retcode === 0) {
+        message.success(ret?.data?.data);
+      } else {
+        message.error(ret?.data?.data);
+      }
+      return ret;
+    },
+  });
+
+  return { data, loading, testDbConnect: mutateAsync };
 };

@@ -35,12 +35,13 @@ export default {
   switch_chunk: `${api_host}/chunk/switch`,
   rm_chunk: `${api_host}/chunk/rm`,
   retrieval_test: `${api_host}/chunk/retrieval_test`,
+  knowledge_graph: `${api_host}/chunk/knowledge_graph`,
 
   // document
-  upload: `${api_host}/document/upload`,
   get_document_list: `${api_host}/document/list`,
   document_change_status: `${api_host}/document/change_status`,
   document_rm: `${api_host}/document/rm`,
+  document_delete: `${api_host}/api/document`,
   document_rename: `${api_host}/document/rename`,
   document_create: `${api_host}/document/create`,
   document_run: `${api_host}/document/run`,
@@ -49,6 +50,8 @@ export default {
   get_document_file: `${api_host}/document/get`,
   document_upload: `${api_host}/document/upload`,
   web_crawl: `${api_host}/document/web_crawl`,
+  document_infos: `${api_host}/document/infos`,
+  upload_and_parse: `${api_host}/document/upload_and_parse`,
 
   // chat
   setDialog: `${api_host}/dialog/set`,
@@ -68,6 +71,7 @@ export default {
   createExternalConversation: `${api_host}/api/new_conversation`,
   getExternalConversation: `${api_host}/api/conversation`,
   completeExternalConversation: `${api_host}/api/completion`,
+  uploadAndParseExternal: `${api_host}/api/document/upload_and_parse`,
 
   // file manager
   listFile: `${api_host}/file/list`,
@@ -78,6 +82,7 @@ export default {
   createFolder: `${api_host}/file/create`,
   connectFileToKnowledge: `${api_host}/file2document/convert`,
   getFile: `${api_host}/file/get`,
+  moveFile: `${api_host}/file/mv`,
 
   // system
   getSystemVersion: `${api_host}/system/version`,
@@ -91,4 +96,5 @@ export default {
   setCanvas: `${api_host}/canvas/set`,
   resetCanvas: `${api_host}/canvas/reset`,
   runCanvas: `${api_host}/canvas/completion`,
+  testDbConnect: `${api_host}/canvas/test_db_connect`,
 };

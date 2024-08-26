@@ -1,6 +1,5 @@
-import { useSetModalState } from '@/hooks/commonHooks';
+import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchFlow, useResetFlow, useSetFlow } from '@/hooks/flow-hooks';
-import { useFetchLlmList } from '@/hooks/llmHooks';
 import { IGraph } from '@/interfaces/database/flow';
 import { useIsFetching } from '@tanstack/react-query';
 import React, {
@@ -8,16 +7,17 @@ import React, {
   KeyboardEventHandler,
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
-import { Connection, Node, Position, ReactFlowInstance } from 'reactflow';
+import { Connection, Edge, Node, Position, ReactFlowInstance } from 'reactflow';
 // import { shallow } from 'zustand/shallow';
 import { variableEnabledFieldMap } from '@/constants/chat';
 import {
   ModelVariableType,
   settledModelVariableMap,
 } from '@/constants/knowledge';
-import { useFetchModelId, useSendMessageWithSse } from '@/hooks/logicHooks';
+import { useFetchModelId, useSendMessageWithSse } from '@/hooks/logic-hooks';
 import { Variable } from '@/interfaces/database/chat';
 import api from '@/utils/api';
 import { useDebounceEffect } from 'ahooks';
@@ -25,20 +25,43 @@ import { FormInstance, message } from 'antd';
 import { humanId } from 'human-id';
 import trim from 'lodash/trim';
 import { useParams } from 'umi';
+import { v4 as uuid } from 'uuid';
 import {
   NodeMap,
   Operator,
   RestrictedUpstreamMap,
+  SwitchElseTo,
+  initialArXivValues,
+  initialBaiduFanyiValues,
+  initialBaiduValues,
   initialBeginValues,
+  initialBingValues,
   initialCategorizeValues,
+  initialDeepLValues,
+  initialDuckValues,
+  initialExeSqlValues,
   initialGenerateValues,
+  initialGithubValues,
+  initialGoogleScholarValues,
+  initialGoogleValues,
+  initialKeywordExtractValues,
   initialMessageValues,
+  initialPubMedValues,
+  initialQWeatherValues,
   initialRelevantValues,
   initialRetrievalValues,
   initialRewriteQuestionValues,
+  initialSwitchValues,
+  initialWikipediaValues,
 } from './constant';
+import { ICategorizeForm, IRelevantForm, ISwitchForm } from './interface';
 import useGraphStore, { RFState } from './store';
-import { buildDslComponentsByGraph, receiveMessageError } from './utils';
+import {
+  buildDslComponentsByGraph,
+  generateSwitchHandleText,
+  receiveMessageError,
+  replaceIdWithText,
+} from './utils';
 
 const selector = (state: RFState) => ({
   nodes: state.nodes,
@@ -57,26 +80,47 @@ export const useSelectCanvasData = () => {
 };
 
 export const useInitializeOperatorParams = () => {
-  const llmId = useFetchModelId(true);
+  const llmId = useFetchModelId();
+
+  const initialFormValuesMap = useMemo(() => {
+    return {
+      [Operator.Begin]: initialBeginValues,
+      [Operator.Retrieval]: initialRetrievalValues,
+      [Operator.Generate]: { ...initialGenerateValues, llm_id: llmId },
+      [Operator.Answer]: {},
+      [Operator.Categorize]: { ...initialCategorizeValues, llm_id: llmId },
+      [Operator.Relevant]: { ...initialRelevantValues, llm_id: llmId },
+      [Operator.RewriteQuestion]: {
+        ...initialRewriteQuestionValues,
+        llm_id: llmId,
+      },
+      [Operator.Message]: initialMessageValues,
+      [Operator.KeywordExtract]: {
+        ...initialKeywordExtractValues,
+        llm_id: llmId,
+      },
+      [Operator.DuckDuckGo]: initialDuckValues,
+      [Operator.Baidu]: initialBaiduValues,
+      [Operator.Wikipedia]: initialWikipediaValues,
+      [Operator.PubMed]: initialPubMedValues,
+      [Operator.ArXiv]: initialArXivValues,
+      [Operator.Google]: initialGoogleValues,
+      [Operator.Bing]: initialBingValues,
+      [Operator.GoogleScholar]: initialGoogleScholarValues,
+      [Operator.DeepL]: initialDeepLValues,
+      [Operator.GitHub]: initialGithubValues,
+      [Operator.BaiduFanyi]: initialBaiduFanyiValues,
+      [Operator.QWeather]: initialQWeatherValues,
+      [Operator.ExeSQL]: initialExeSqlValues,
+      [Operator.Switch]: initialSwitchValues,
+    };
+  }, [llmId]);
 
   const initializeOperatorParams = useCallback(
     (operatorName: Operator) => {
-      const initialFormValuesMap = {
-        [Operator.Begin]: initialBeginValues,
-        [Operator.Retrieval]: initialRetrievalValues,
-        [Operator.Generate]: { ...initialGenerateValues, llm_id: llmId },
-        [Operator.Answer]: {},
-        [Operator.Categorize]: { ...initialCategorizeValues, llm_id: llmId },
-        [Operator.Relevant]: { ...initialRelevantValues, llm_id: llmId },
-        [Operator.RewriteQuestion]: {
-          ...initialRewriteQuestionValues,
-          llm_id: llmId,
-        },
-        [Operator.Message]: initialMessageValues,
-      };
       return initialFormValuesMap[operatorName];
     },
-    [llmId],
+    [initialFormValuesMap],
   );
 
   return initializeOperatorParams;
@@ -224,8 +268,22 @@ export const useHandleFormValuesChange = (id?: string) => {
   const updateNodeForm = useGraphStore((state) => state.updateNodeForm);
   const handleValuesChange = useCallback(
     (changedValues: any, values: any) => {
+      let nextValues: any = values;
+      // Fixed the issue that the related form value does not change after selecting the freedom field of the model
+      if (
+        Object.keys(changedValues).length === 1 &&
+        'parameter' in changedValues &&
+        changedValues['parameter'] in settledModelVariableMap
+      ) {
+        nextValues = {
+          ...values,
+          ...settledModelVariableMap[
+            changedValues['parameter'] as keyof typeof settledModelVariableMap
+          ],
+        };
+      }
       if (id) {
-        updateNodeForm(id, values);
+        updateNodeForm(id, nextValues);
       }
     },
     [updateNodeForm, id],
@@ -249,7 +307,7 @@ const useSetGraphInfo = () => {
 };
 
 export const useFetchDataOnMount = () => {
-  const { loading, data } = useFetchFlow();
+  const { loading, data, refetch } = useFetchFlow();
   const setGraphInfo = useSetGraphInfo();
 
   useEffect(() => {
@@ -258,7 +316,9 @@ export const useFetchDataOnMount = () => {
 
   useWatchGraphChange();
 
-  useFetchLlmList();
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   return { loading, flowDetail: data };
 };
@@ -355,6 +415,7 @@ export const useSaveGraphBeforeOpeningDebugDrawer = (show: () => void) => {
   const { id } = useParams();
   const { saveGraph } = useSaveGraph();
   const { resetFlow } = useResetFlow();
+  const { refetch } = useFetchFlow();
   const { send } = useSendMessageWithSse(api.runCanvas);
   const handleRun = useCallback(async () => {
     const saveRet = await saveGraph();
@@ -368,11 +429,160 @@ export const useSaveGraphBeforeOpeningDebugDrawer = (show: () => void) => {
         if (receiveMessageError(sendRet)) {
           message.error(sendRet?.data?.retmsg);
         } else {
+          refetch();
           show();
         }
       }
     }
-  }, [saveGraph, resetFlow, id, send, show]);
+  }, [saveGraph, resetFlow, id, send, show, refetch]);
 
   return handleRun;
+};
+
+export const useReplaceIdWithText = (output: unknown) => {
+  const getNode = useGraphStore((state) => state.getNode);
+
+  const getNameById = (id?: string) => {
+    return getNode(id)?.data.name;
+  };
+
+  return replaceIdWithText(output, getNameById);
+};
+
+/**
+ *  monitor changes in the data.form field of the categorize and relevant operators
+ *  and then synchronize them to the edge
+ */
+export const useWatchNodeFormDataChange = () => {
+  const { getNode, nodes, setEdgesByNodeId } = useGraphStore((state) => state);
+
+  const buildCategorizeEdgesByFormData = useCallback(
+    (nodeId: string, form: ICategorizeForm) => {
+      // add
+      // delete
+      // edit
+      const categoryDescription = form.category_description;
+      const downstreamEdges = Object.keys(categoryDescription).reduce<Edge[]>(
+        (pre, sourceHandle) => {
+          const target = categoryDescription[sourceHandle]?.to;
+          if (target) {
+            pre.push({
+              id: uuid(),
+              source: nodeId,
+              target,
+              sourceHandle,
+            });
+          }
+
+          return pre;
+        },
+        [],
+      );
+
+      setEdgesByNodeId(nodeId, downstreamEdges);
+    },
+    [setEdgesByNodeId],
+  );
+
+  const buildRelevantEdgesByFormData = useCallback(
+    (nodeId: string, form: IRelevantForm) => {
+      const downstreamEdges = ['yes', 'no'].reduce<Edge[]>((pre, cur) => {
+        const target = form[cur as keyof IRelevantForm] as string;
+        if (target) {
+          pre.push({ id: uuid(), source: nodeId, target, sourceHandle: cur });
+        }
+
+        return pre;
+      }, []);
+
+      setEdgesByNodeId(nodeId, downstreamEdges);
+    },
+    [setEdgesByNodeId],
+  );
+
+  const buildSwitchEdgesByFormData = useCallback(
+    (nodeId: string, form: ISwitchForm) => {
+      // add
+      // delete
+      // edit
+      const conditions = form.conditions;
+      const downstreamEdges = conditions.reduce<Edge[]>((pre, _, idx) => {
+        const target = conditions[idx]?.to;
+        if (target) {
+          pre.push({
+            id: uuid(),
+            source: nodeId,
+            target,
+            sourceHandle: generateSwitchHandleText(idx),
+          });
+        }
+
+        return pre;
+      }, []);
+
+      // Splice the else condition of the conditional judgment to the edge list
+      const elseTo = form[SwitchElseTo];
+      if (elseTo) {
+        downstreamEdges.push({
+          id: uuid(),
+          source: nodeId,
+          target: elseTo,
+          sourceHandle: SwitchElseTo,
+        });
+      }
+
+      setEdgesByNodeId(nodeId, downstreamEdges);
+    },
+    [setEdgesByNodeId],
+  );
+
+  useEffect(() => {
+    nodes.forEach((node) => {
+      const currentNode = getNode(node.id);
+      const form = currentNode?.data.form ?? {};
+      const operatorType = currentNode?.data.label;
+      switch (operatorType) {
+        case Operator.Relevant:
+          buildRelevantEdgesByFormData(node.id, form as IRelevantForm);
+          break;
+        case Operator.Categorize:
+          buildCategorizeEdgesByFormData(node.id, form as ICategorizeForm);
+          break;
+        case Operator.Switch:
+          buildSwitchEdgesByFormData(node.id, form as ISwitchForm);
+          break;
+        default:
+          break;
+      }
+    });
+  }, [
+    nodes,
+    buildCategorizeEdgesByFormData,
+    getNode,
+    buildRelevantEdgesByFormData,
+    buildSwitchEdgesByFormData,
+  ]);
+};
+
+// exclude nodes with branches
+const ExcludedNodes = [
+  Operator.Categorize,
+  Operator.Relevant,
+  Operator.Begin,
+  Operator.Answer,
+];
+
+export const useBuildComponentIdSelectOptions = (nodeId?: string) => {
+  const nodes = useGraphStore((state) => state.nodes);
+
+  const options = useMemo(() => {
+    return nodes
+      .filter(
+        (x) =>
+          x.id !== nodeId && !ExcludedNodes.some((y) => y === x.data.label),
+      )
+      .map((x) => ({ label: x.data.name, value: x.id }));
+  }, [nodes, nodeId]);
+
+  return options;
 };

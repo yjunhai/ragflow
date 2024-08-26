@@ -12,35 +12,56 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-import json
-import os
 
 import requests
 
-from api.db.services.document_service import DocumentService
-from api.settings import RetCode
+from .modules.dataset import DataSet
 
 
 class RAGFlow:
     def __init__(self, user_key, base_url, version='v1'):
         """
-        api_url: http://<host_address>/api/v1
-        dataset_url: http://<host_address>/api/v1/dataset
-        document_url: http://<host_address>/api/v1/dataset/{dataset_id}/documents
+        api_url: http://<host_address>/v1
+        dataset_url: http://<host_address>/v1/kb
+        document_url: http://<host_address>/v1/dataset/{dataset_id}/documents
         """
         self.user_key = user_key
-        self.api_url = f"{base_url}/api/{version}"
-        self.dataset_url = f"{self.api_url}/dataset"
+        self.api_url = f"{base_url}/{version}"
+        self.dataset_url = f"{self.api_url}/kb"
         self.authorization_header = {"Authorization": "{}".format(self.user_key)}
+        self.base_url = base_url
+
+    def post(self, path, param):
+        res = requests.post(url=self.dataset_url + path, json=param, headers=self.authorization_header)
+        return res
+
+    def get(self, path, params=''):
+        res = requests.get(self.dataset_url + path, params=params, headers=self.authorization_header)
+        return res
 
     def create_dataset(self, dataset_name):
         """
         name: dataset name
         """
-        res = requests.post(url=self.dataset_url, json={"name": dataset_name}, headers=self.authorization_header)
-        result_dict = json.loads(res.text)
-        return result_dict
+        res_create = self.post("/create", {"name": dataset_name})
+        res_create_data = res_create.json()['data']
+        res_detail = self.get("/detail", {"kb_id": res_create_data["kb_id"]})
+        res_detail_data = res_detail.json()['data']
+        result = {}
+        result['id'] = res_detail_data['id']
+        result['name'] = res_detail_data['name']
+        result['avatar'] = res_detail_data['avatar']
+        result['description'] = res_detail_data['description']
+        result['language'] = res_detail_data['language']
+        result['embedding_model'] = res_detail_data['embd_id']
+        result['permission'] = res_detail_data['permission']
+        result['document_count'] = res_detail_data['doc_num']
+        result['chunk_count'] = res_detail_data['chunk_num']
+        result['parser_config'] = res_detail_data['parser_config']
+        dataset = DataSet(self, result)
+        return dataset
 
+    """
     def delete_dataset(self, dataset_name):
         dataset_id = self.find_dataset_id_by_name(dataset_name)
 
@@ -55,16 +76,6 @@ class RAGFlow:
                 return dataset["id"]
         return None
 
-    def list_dataset(self, offset=0, count=-1, orderby="create_time", desc=True):
-        params = {
-            "offset": offset,
-            "count": count,
-            "orderby": orderby,
-            "desc": desc
-        }
-        response = requests.get(url=self.dataset_url, params=params, headers=self.authorization_header)
-        return response.json()
-
     def get_dataset(self, dataset_name):
         dataset_id = self.find_dataset_id_by_name(dataset_name)
         endpoint = f"{self.dataset_url}/{dataset_id}"
@@ -78,7 +89,7 @@ class RAGFlow:
         response = requests.put(endpoint, json=params, headers=self.authorization_header)
         return response.json()
 
-# ------------------------------- CONTENT MANAGEMENT -----------------------------------------------------
+    # ------------------------------- CONTENT MANAGEMENT -----------------------------------------------------
 
     # ----------------------------upload local files-----------------------------------------------------
     def upload_local_file(self, dataset_id, file_paths):
@@ -142,12 +153,39 @@ class RAGFlow:
             with open(file_path, "wb") as file:
                 file.write(content)
             return {"code": RetCode.SUCCESS, "data": content}
+
     # ----------------------------start parsing-----------------------------------------------------
+    def start_parsing_document(self, dataset_id, document_id):
+        endpoint = f"{self.dataset_url}/{dataset_id}/documents/{document_id}/status"
+        res = requests.post(endpoint, headers=self.authorization_header)
+
+        return res.json()
+
+    def start_parsing_documents(self, dataset_id, doc_ids=None):
+        endpoint = f"{self.dataset_url}/{dataset_id}/documents/status"
+        res = requests.post(endpoint, headers=self.authorization_header, json={"doc_ids": doc_ids})
+
+        return res.json()
 
     # ----------------------------stop parsing-----------------------------------------------------
+    def stop_parsing_document(self, dataset_id, document_id):
+        endpoint = f"{self.dataset_url}/{dataset_id}/documents/{document_id}/status"
+        res = requests.delete(endpoint, headers=self.authorization_header)
+
+        return res.json()
+
+    def stop_parsing_documents(self, dataset_id, doc_ids=None):
+        endpoint = f"{self.dataset_url}/{dataset_id}/documents/status"
+        res = requests.delete(endpoint, headers=self.authorization_header, json={"doc_ids": doc_ids})
+
+        return res.json()
 
     # ----------------------------show the status of the file-----------------------------------------------------
+    def show_parsing_status(self, dataset_id, document_id):
+        endpoint = f"{self.dataset_url}/{dataset_id}/documents/{document_id}/status"
+        res = requests.get(endpoint, headers=self.authorization_header)
 
+        return res.json()
     # ----------------------------list the chunks of the file-----------------------------------------------------
 
     # ----------------------------delete the chunk-----------------------------------------------------
@@ -159,4 +197,4 @@ class RAGFlow:
     # ----------------------------get a specific chunk-----------------------------------------------------
 
     # ----------------------------retrieval test-----------------------------------------------------
-
+"""

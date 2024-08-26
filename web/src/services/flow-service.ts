@@ -1,5 +1,5 @@
 import api from '@/utils/api';
-import registerServer from '@/utils/registerServer';
+import registerServer from '@/utils/register-server';
 import request from '@/utils/request';
 
 const {
@@ -10,6 +10,7 @@ const {
   removeCanvas,
   runCanvas,
   listTemplates,
+  testDbConnect,
 } = api;
 
 const methods = {
@@ -40,6 +41,10 @@ const methods = {
   listTemplates: {
     url: listTemplates,
     method: 'get',
+  },
+  testDbConnect: {
+    url: testDbConnect,
+    method: 'post',
   },
 } as const;
 

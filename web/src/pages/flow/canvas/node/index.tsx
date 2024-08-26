@@ -1,3 +1,4 @@
+import { useTranslate } from '@/hooks/common-hooks';
 import { Flex } from 'antd';
 import classNames from 'classnames';
 import pick from 'lodash/pick';
@@ -7,6 +8,13 @@ import { NodeData } from '../../interface';
 import OperatorIcon from '../../operator-icon';
 import NodeDropdown from './dropdown';
 import styles from './index.less';
+import NodePopover from './popover';
+
+const ZeroGapOperators = [
+  Operator.RewriteQuestion,
+  Operator.KeywordExtract,
+  Operator.ArXiv,
+];
 
 export function RagNode({
   id,
@@ -15,52 +23,63 @@ export function RagNode({
   selected,
 }: NodeProps<NodeData>) {
   const style = operatorMap[data.label as Operator];
+  const { t } = useTranslate('flow');
 
   return (
-    <section
-      className={classNames(styles.ragNode, {
-        [styles.selectedNode]: selected,
-      })}
-      style={pick(style, ['backgroundColor', 'width', 'height', 'color'])}
-    >
-      <Handle
-        id="c"
-        type="source"
-        position={Position.Left}
-        isConnectable={isConnectable}
-        className={styles.handle}
-      ></Handle>
-      <Handle type="source" position={Position.Top} id="d" isConnectable />
-      <Handle
-        type="source"
-        position={Position.Right}
-        isConnectable={isConnectable}
-        className={styles.handle}
-        id="b"
-      ></Handle>
-      <Handle type="source" position={Position.Bottom} id="a" isConnectable />
-      <Flex
-        vertical
-        align="center"
-        justify={'center'}
-        gap={data.label === Operator.RewriteQuestion ? 0 : 6}
+    <NodePopover nodeId={id}>
+      <section
+        className={classNames(styles.ragNode, {
+          [styles.selectedNode]: selected,
+        })}
+        style={{
+          ...pick(style, ['backgroundColor', 'color']),
+        }}
       >
-        <OperatorIcon
-          name={data.label as Operator}
-          fontSize={style['iconFontSize'] ?? 24}
-        ></OperatorIcon>
-        <span
-          className={styles.type}
-          style={{ fontSize: style.fontSize ?? 14 }}
+        <Handle
+          id="c"
+          type="source"
+          position={Position.Left}
+          isConnectable={isConnectable}
+          className={styles.handle}
+        ></Handle>
+        <Handle type="source" position={Position.Top} id="d" isConnectable />
+        <Handle
+          type="source"
+          position={Position.Right}
+          isConnectable={isConnectable}
+          className={styles.handle}
+          id="b"
+        ></Handle>
+        <Handle type="source" position={Position.Bottom} id="a" isConnectable />
+        <Flex
+          vertical
+          align="center"
+          justify={'space-around'}
+          // gap={ZeroGapOperators.some((x) => x === data.label) ? 0 : 6}
         >
-          {data.label === Operator.RewriteQuestion ? 'Rewrite' : data.label}
-        </span>
-        <NodeDropdown id={id}></NodeDropdown>
-      </Flex>
+          <Flex flex={1} justify="center" align="center">
+            <label htmlFor=""> </label>
+          </Flex>
 
-      <section className={styles.bottomBox}>
-        <div className={styles.nodeName}>{data.name}</div>
+          <Flex flex={1}>
+            <OperatorIcon
+              name={data.label as Operator}
+              fontSize={style?.iconFontSize ?? 16}
+              width={style?.iconWidth}
+            ></OperatorIcon>
+          </Flex>
+          <Flex flex={1}>
+            <NodeDropdown
+              id={id}
+              iconFontColor={style?.moreIconColor}
+            ></NodeDropdown>
+          </Flex>
+        </Flex>
+
+        <section className={styles.bottomBox}>
+          <div className={styles.nodeName}>{data.name}</div>
+        </section>
       </section>
-    </section>
+    </NodePopover>
   );
 }

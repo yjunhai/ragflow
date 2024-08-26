@@ -1,7 +1,7 @@
 import { IModalManagerChildrenProps } from '@/components/modal-manager';
-import { useTranslate } from '@/hooks/commonHooks';
+import { useTranslate } from '@/hooks/common-hooks';
 import { useFetchFlowTemplates } from '@/hooks/flow-hooks';
-import { useSelectItem } from '@/hooks/logicHooks';
+import { useSelectItem } from '@/hooks/logic-hooks';
 import { Card, Flex, Form, Input, Modal, Space, Typography } from 'antd';
 import classNames from 'classnames';
 import { useEffect } from 'react';
@@ -46,7 +46,7 @@ const CreateFlowModal = ({
 
   return (
     <Modal
-      title={t('createFlow', { keyPrefix: 'flow' })}
+      title={t('createGraph', { keyPrefix: 'flow' })}
       open={visible}
       onOk={handleOk}
       width={600}
@@ -70,7 +70,7 @@ const CreateFlowModal = ({
           <Input />
         </Form.Item>
       </Form>
-      <Title level={5}>Create from templates</Title>
+      <Title level={5}>{t('createFromTemplates', { keyPrefix: 'flow' })}</Title>
       <Flex vertical gap={16} className={styles.templatesBox}>
         {list?.map((x) => (
           <Card

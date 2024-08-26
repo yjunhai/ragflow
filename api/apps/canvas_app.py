@@ -15,15 +15,13 @@
 #
 import json
 from functools import partial
-
 from flask import request, Response
 from flask_login import login_required, current_user
-
-from api.db.db_models import UserCanvas
 from api.db.services.canvas_service import CanvasTemplateService, UserCanvasService
 from api.utils import get_uuid
 from api.utils.api_utils import get_json_result, server_error_response, validate_request
-from graph.canvas import Canvas
+from agent.canvas import Canvas
+from peewee import MySQLDatabase, PostgresqlDatabase
 
 
 @manager.route('/templates', methods=['GET'])
@@ -93,20 +91,21 @@ def run():
         cvs.dsl = json.dumps(cvs.dsl, ensure_ascii=False)
 
     final_ans = {"reference": [], "content": ""}
+    message_id = get_uuid()
     try:
         canvas = Canvas(cvs.dsl, current_user.id)
         if "message" in req:
-            canvas.messages.append({"role": "user", "content": req["message"]})
+            canvas.messages.append({"role": "user", "content": req["message"], "id": message_id})
             canvas.add_user_input(req["message"])
         answer = canvas.run(stream=stream)
         print(canvas)
     except Exception as e:
         return server_error_response(e)
 
-    assert answer, "Nothing. Is it over?"
+    assert answer is not None, "Nothing. Is it over?"
 
     if stream:
-        assert isinstance(answer, partial)
+        assert isinstance(answer, partial), "Nothing. Is it over?"
 
         def sse():
             nonlocal answer, cvs
@@ -117,7 +116,7 @@ def run():
                     ans = {"answer": ans["content"], "reference": ans.get("reference", [])}
                     yield "data:" + json.dumps({"retcode": 0, "retmsg": "", "data": ans}, ensure_ascii=False) + "\n\n"
 
-                canvas.messages.append({"role": "assistant", "content": final_ans["content"]})
+                canvas.messages.append({"role": "assistant", "content": final_ans["content"], "id": message_id})
                 if final_ans.get("reference"):
                     canvas.reference.append(final_ans["reference"])
                 cvs.dsl = json.loads(str(canvas))
@@ -135,12 +134,13 @@ def run():
         resp.headers.add_header("Content-Type", "text/event-stream; charset=utf-8")
         return resp
 
-    canvas.messages.append({"role": "assistant", "content": final_ans["content"]})
+    final_ans["content"] = "\n".join(answer["content"]) if "content" in answer else ""
+    canvas.messages.append({"role": "assistant", "content": final_ans["content"], "id": message_id})
     if final_ans.get("reference"):
         canvas.reference.append(final_ans["reference"])
     cvs.dsl = json.loads(str(canvas))
     UserCanvasService.update_by_id(req["id"], cvs.to_dict())
-    return get_json_result(data=req["dsl"])
+    return get_json_result(data={"answer": final_ans["content"], "reference": final_ans.get("reference", [])})
 
 
 @manager.route('/reset', methods=['POST'])
@@ -158,5 +158,24 @@ def reset():
         req["dsl"] = json.loads(str(canvas))
         UserCanvasService.update_by_id(req["id"], {"dsl": req["dsl"]})
         return get_json_result(data=req["dsl"])
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route('/test_db_connect', methods=['POST'])
+@validate_request("db_type", "database", "username", "host", "port", "password")
+@login_required
+def test_db_connect():
+    req = request.json
+    try:
+        if req["db_type"] in ["mysql", "mariadb"]:
+            db = MySQLDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"],
+                               password=req["password"])
+        elif req["db_type"] == 'postgresql':
+            db = PostgresqlDatabase(req["database"], user=req["username"], host=req["host"], port=req["port"],
+                                    password=req["password"])
+        db.connect()
+        db.close()
+        return get_json_result(data="Database Connection Successful!")
     except Exception as e:
         return server_error_response(e)

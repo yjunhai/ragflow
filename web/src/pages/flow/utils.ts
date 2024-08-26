@@ -1,13 +1,14 @@
 import { DSLComponents } from '@/interfaces/database/flow';
 import { removeUselessFieldsFromValues } from '@/utils/form';
-import dagre from 'dagre';
+import { FormInstance, FormListFieldData } from 'antd';
 import { humanId } from 'human-id';
-import { curry } from 'lodash';
+import { curry, get, intersectionWith, isEqual, sample } from 'lodash';
 import pipe from 'lodash/fp/pipe';
+import isObject from 'lodash/isObject';
 import { Edge, Node, Position } from 'reactflow';
 import { v4 as uuidv4 } from 'uuid';
-import { NodeMap, Operator } from './constant';
-import { ICategorizeItemResult, NodeData } from './interface';
+import { CategorizeAnchorPointPositions, NodeMap, Operator } from './constant';
+import { ICategorizeItemResult, IPosition, NodeData } from './interface';
 
 const buildEdges = (
   operatorIds: string[],
@@ -79,48 +80,6 @@ export const buildNodesAndEdgesFromDSLComponents = (data: DSLComponents) => {
   return { nodes, edges };
 };
 
-const dagreGraph = new dagre.graphlib.Graph();
-dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-const nodeWidth = 172;
-const nodeHeight = 36;
-
-export const getLayoutedElements = (
-  nodes: Node[],
-  edges: Edge[],
-  direction = 'TB',
-) => {
-  const isHorizontal = direction === 'LR';
-  dagreGraph.setGraph({ rankdir: direction });
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
-  });
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(dagreGraph);
-
-  nodes.forEach((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    node.targetPosition = isHorizontal ? Position.Left : Position.Top;
-    node.sourcePosition = isHorizontal ? Position.Right : Position.Bottom;
-
-    // We are shifting the dagre node position (anchor=center center) to the top left
-    // so it matches the React Flow node anchor point (top left).
-    node.position = {
-      x: nodeWithPosition.x - nodeWidth / 2,
-      y: nodeWithPosition.y - nodeHeight / 2,
-    };
-
-    return node;
-  });
-
-  return { nodes, edges };
-};
-
 const buildComponentDownstreamOrUpstream = (
   edges: Edge[],
   nodeId: string,
@@ -184,3 +143,94 @@ export const buildDslComponentsByGraph = (
 
 export const receiveMessageError = (res: any) =>
   res && (res?.response.status !== 200 || res?.data?.retcode !== 0);
+
+// Replace the id in the object with text
+export const replaceIdWithText = (
+  obj: Record<string, unknown> | unknown[] | unknown,
+  getNameById: (id?: string) => string | undefined,
+) => {
+  if (isObject(obj)) {
+    const ret: Record<string, unknown> | unknown[] = Array.isArray(obj)
+      ? []
+      : {};
+    Object.keys(obj).forEach((key) => {
+      const val = (obj as Record<string, unknown>)[key];
+      const text = typeof val === 'string' ? getNameById(val) : undefined;
+      (ret as Record<string, unknown>)[key] = text
+        ? text
+        : replaceIdWithText(val, getNameById);
+    });
+
+    return ret;
+  }
+
+  return obj;
+};
+
+export const isEdgeEqual = (previous: Edge, current: Edge) =>
+  previous.source === current.source &&
+  previous.target === current.target &&
+  previous.sourceHandle === current.sourceHandle;
+
+export const buildNewPositionMap = (
+  currentKeys: string[],
+  previousPositionMap: Record<string, IPosition>,
+) => {
+  // index in use
+  const indexesInUse = Object.values(previousPositionMap).map((x) => x.idx);
+  const previousKeys = Object.keys(previousPositionMap);
+  const intersectionKeys = intersectionWith(
+    previousKeys,
+    currentKeys,
+    (categoryDataKey, positionMapKey) => categoryDataKey === positionMapKey,
+  );
+  // difference set
+  const currentDifferenceKeys = currentKeys.filter(
+    (x) => !intersectionKeys.some((y) => y === x),
+  );
+  const newPositionMap = currentDifferenceKeys.reduce<
+    Record<string, IPosition>
+  >((pre, cur) => {
+    // take a coordinate
+    const effectiveIdxes = CategorizeAnchorPointPositions.map(
+      (x, idx) => idx,
+    ).filter((x) => !indexesInUse.some((y) => y === x));
+    const idx = sample(effectiveIdxes);
+    if (idx !== undefined) {
+      indexesInUse.push(idx);
+      pre[cur] = { ...CategorizeAnchorPointPositions[idx], idx };
+    }
+
+    return pre;
+  }, {});
+
+  return { intersectionKeys, newPositionMap };
+};
+
+export const isKeysEqual = (currentKeys: string[], previousKeys: string[]) => {
+  return isEqual(currentKeys.sort(), previousKeys.sort());
+};
+
+export const getOperatorIndex = (handleTitle: string) => {
+  return handleTitle.split(' ').at(-1);
+};
+
+// Get the value of other forms except itself
+export const getOtherFieldValues = (
+  form: FormInstance,
+  formListName: string = 'items',
+  field: FormListFieldData,
+  latestField: string,
+) =>
+  (form.getFieldValue([formListName]) ?? [])
+    .map((x: any) => {
+      return get(x, latestField);
+    })
+    .filter(
+      (x: string) =>
+        x !== form.getFieldValue([formListName, field.name, latestField]),
+    );
+
+export const generateSwitchHandleText = (idx: number) => {
+  return `Case ${idx + 1}`;
+};
